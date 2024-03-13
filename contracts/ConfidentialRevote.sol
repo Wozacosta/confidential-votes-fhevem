@@ -8,13 +8,6 @@ import "fhevm/lib/TFHE.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 contract ConfidentialRevote is Reencrypt, Ownable2Step {
-    // Events
-    event PollCreated(uint indexed pollId, string question, string[] options);
-    event Voted(uint indexed pollId, address indexed voter, uint optionId);
-    event PollEnded(uint indexed pollId);
-    event PollDeleted(uint indexed pollId); // Added PollDeleted Event
-    event FeesUpdated(uint256 pollCreationFee, uint256 extraPollFee, uint256 changeVoteFee);
-
     // State variables
     Poll[] public polls;
     mapping(uint => mapping(address => Vote)) public votes;
@@ -25,7 +18,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     bool public paused = false;
     address public feeCollector;
 
-    mapping(address => euint32[]) public userPolls;
+    mapping(address => uint[]) public userPolls;
     mapping(address => euint32[]) public userVotes;
 
     /// @dev Modifiers to simplify requirements
@@ -54,7 +47,6 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         string question;
         string[] options;
         bool active;
-        uint256 endTime;
         address creator;
     }
 
@@ -101,56 +93,33 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     /// @param _newFee The new poll creation fee
     function updatePollCreationFee(uint256 _newFee) public onlyOwner {
         pollCreationFee = _newFee;
-        emit FeesUpdated(pollCreationFee, extraPollFee, changeVoteFee);
     }
 
     /// @notice Updates the extra poll fee
     /// @param _newFee The new extra poll fee
     function updateExtraPollFee(uint256 _newFee) public onlyOwner {
         extraPollFee = _newFee;
-        emit FeesUpdated(pollCreationFee, extraPollFee, changeVoteFee);
     }
 
     /// @notice Updates the change vote fee
     /// @param _newFee The new change vote fee
     function updateChangeVoteFee(uint256 _newFee) public onlyOwner {
         changeVoteFee = _newFee;
-        emit FeesUpdated(pollCreationFee, extraPollFee, changeVoteFee);
     }
 
     /// @notice Create a new poll
     /// @param _question The poll question
     /// @param _options The poll options
-    /// @param _duration The poll duration in seconds
-    /// @dev _duration must be between 1 second and 1 week. _options must have at least two choices and at most ten.
-
-    function createPoll(
-        string memory _question,
-        string[] memory _options,
-        uint256 _duration
-    ) public payable whenNotPaused {
+    /// @dev  _options must have at least two choices and at most ten.
+    function createPoll(string memory _question, string[] memory _options) public payable whenNotPaused {
         require(msg.value >= pollCreationFee, "Insufficient fee");
-        require(_duration > 0 && _duration <= 604800, "Duration must be between 1 second and 1 week"); // Duration validity check
-        require(_options.length >= 2 && _options.length <= 10, "There must be at least two and at most ten options"); // Option validity check
+        require(_options.length >= 2 && _options.length <= 100, "There must be at least two and at most 100 options"); // Option validity check
 
-        uint256 endTime = block.timestamp + _duration;
-        Poll memory newPoll = Poll(_question, _options, true, endTime, msg.sender);
+        Poll memory newPoll = Poll(_question, _options, true, msg.sender);
         polls.push(newPoll);
 
-        uint32 pollId = polls.length - 1;
+        uint pollId = polls.length - 1;
         userPolls[msg.sender].push(pollId);
-
-        emit PollCreated(pollId, _question, _options);
-    }
-
-    /// @notice Delete a poll
-    /// @param _pollId The poll ID to delete
-    /// @dev Only the poll creator or contract owner can delete a poll. The poll must be inactive to be deleted.
-    function deletePoll(uint _pollId) public onlyPollOwnerOrContractOwner(_pollId) {
-        require(!polls[_pollId].active, "Can't delete an active poll");
-
-        delete polls[_pollId];
-        emit PollDeleted(_pollId);
     }
 
     /// @notice Vote in a poll
@@ -162,38 +131,15 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         Vote memory newVote = Vote(_pollId, _optionId, true);
         votes[_pollId][msg.sender] = newVote;
         voteCounts[_pollId][_optionId]++;
-        userVotes[msg.sender].push(_pollId);
-        console.log("voted %s with %s", _pollId, _optionId);
-
-        emit Voted(_pollId, msg.sender, _optionId);
-    }
-
-    /// @notice Change vote in a poll
-    /// @param _pollId The poll ID
-    /// @param _newOptionId The new chosen option ID
-    /// @dev User must pay the changeVoteFee to change their vote. Poll must be active.
-    function changeVote(
-        uint _pollId,
-        uint _newOptionId
-    ) public payable whenNotPaused pollExists(_pollId) pollIsActive(_pollId) {
-        require(msg.value >= changeVoteFee, "Insufficient fee for changing vote");
-        require(votes[_pollId][msg.sender].hasVoted, "You must have voted before to change your vote");
-
-        uint oldOptionId = votes[_pollId][msg.sender].optionId;
-        votes[_pollId][msg.sender].optionId = _newOptionId;
-        voteCounts[_pollId][oldOptionId]--;
-        voteCounts[_pollId][_newOptionId]++;
-
-        emit Voted(_pollId, msg.sender, _newOptionId);
+        euint32[] memory _userVotes = userVotes[msg.sender];
+        // userVotes[msg.sender].push(_pollId);
+        // console.log("voted %s with %s", _pollId, _optionId);
     }
 
     /// @notice End a poll
     /// @param _pollId The poll ID to end
     function endPoll(uint _pollId) public onlyPollOwnerOrContractOwner(_pollId) pollExists(_pollId) {
-        require(block.timestamp >= polls[_pollId].endTime, "Poll has not ended yet");
-
         polls[_pollId].active = false;
-        emit PollEnded(_pollId);
     }
 
     /// @notice Retrive all polls
@@ -225,7 +171,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         return userPolls[user];
     }
 
-    function getPollIdsVotedOn(address user) external view returns (uint[] memory) {
+    function getPollIdsVotedOn(address user) external view returns (euint32[] memory) {
         return userVotes[user];
     }
 }

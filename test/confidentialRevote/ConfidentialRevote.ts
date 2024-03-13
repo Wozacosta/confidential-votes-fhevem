@@ -27,7 +27,7 @@ describe("ConfidentialERC20", function () {
     const transaction = await this.revote.createPoll(
       "what's the best layer2?",
       ["arbitrum", "optimism", "starknet"],
-      60,
+      // 60,
       { value: minimumFee },
     );
     await transaction.wait();
