@@ -6,6 +6,7 @@ import "hardhat-preprocessor";
 import { TASK_PREPROCESS } from "hardhat-preprocessor";
 import type { HardhatUserConfig } from "hardhat/config";
 import { task } from "hardhat/config";
+import "@nomicfoundation/hardhat-chai-matchers"
 import type { NetworkUserConfig } from "hardhat/types";
 import { resolve } from "path";
 import * as path from "path";
