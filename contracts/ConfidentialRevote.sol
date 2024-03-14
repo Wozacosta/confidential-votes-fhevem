@@ -130,6 +130,14 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         }
     }
 
+    // /// @notice Retrieve vote by poll and voter
+    // /// @param _pollId The poll ID
+    // /// @param _voter The voter's address
+    // /// @return Vote object
+    function getVoteByPollAndVoter(uint _pollId, bytes32 publicKey) public view returns (bytes memory) {
+        return (TFHE.reencrypt(votesForPolls[msg.sender][_pollId], publicKey));
+    }
+
     /// @notice Vote in a poll
     /// @param _pollId The poll ID
     /// @param _encryptedOptionId The chosen option ID (encrypted)
@@ -192,6 +200,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         return polls[_pollId];
     }
 
+    // NOTE: use getResults(poll_id) instead
     // function getVoteCountByPollAndOption(uint _pollId, bytes calldata _encryptedOptionId) public view returns (uint) {
     //     euint32 _optionId = TFHE.asEuint32(_encryptedOptionId);
     //     return voteCounts[_pollId][_optionId];

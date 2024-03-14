@@ -55,6 +55,8 @@ describe("ConfidentialERC20", function () {
     console.log("BOB VOTES ARBITRUM")
     
     const tokenBob = this.instances.bob.getPublicKey(this.contractAddress)!;
+    const tokenCarol = this.instances.carol.getPublicKey(this.contractAddress)!;
+    const tokenDave = this.instances.dave.getPublicKey(this.contractAddress)!;
     // let votesByBob = await this.revote.connect(this.signers.bob).getPollIdsVotedOn();
     // expect(votesByBob.length).to.equal(0);
 
@@ -70,26 +72,29 @@ describe("ConfidentialERC20", function () {
     // const countArbitrum = await this.revote.getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromAliceForArbitrum);
     // console.log({ countArbitrum });
 
-    const results = await this.revote.connect(this.signers.bob).getResults(POLL_ID, tokenBob.publicKey); 
+    let results = await this.revote.connect(this.signers.bob).getResults(POLL_ID, tokenBob.publicKey); 
     console.log("---------ENCRYPTED VIEW------------")
     console.log({results})
+    expect(results).to.not.eql([1,0,0])
 
     console.log("---------DECRYPTED VIEW------------")
+    let resultsDecrypted = []
     for (var i = 0; i < results.length; i++) {
-      // console.log(`Option ${i} result, bob pov: `, this.instances.alice.decrypt(this.contractAddress, results[i]));
+      // this.instances.alice.decrypt(this.contractAddress, results[i]));
       // NOTE: ^ using alice instance here would break with "Error: incorrect key pair for the given ciphertext"
-      console.log(`Option ${i} result, bob pov: `, this.instances.bob.decrypt(this.contractAddress, results[i]));
+      resultsDecrypted.push(this.instances.bob.decrypt(this.contractAddress, results[i]))
     }
-    /*
-    const countArbitrumBob = await this.revote.connect(this.signers.bob).getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromBobForArbitrum);
-    console.log({ countArbitrumBob });
+    expect(resultsDecrypted).to.eql([1,0,0])
+    console.log({resultsDecrypted})
+    // const countArbitrumBob = await this.revote.connect(this.signers.bob).getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromBobForArbitrum);
+    // console.log({ countArbitrumBob });
     
-    console.log("BEFORE POLLIDSVOTEDON")
-     votesByBob = await this.revote.connect(this.signers.bob).getPollIdsVotedOn(this.signers.bob);
-    console.log({votesByBob})
-    expect(votesByBob.length).to.equal(1);
+    // console.log("BEFORE POLLIDSVOTEDON")
+    //  votesByBob = await this.revote.connect(this.signers.bob).getPollIdsVotedOn(this.signers.bob);
+    // console.log({votesByBob})
+    // expect(votesByBob.length).to.equal(1);
 
-    expect(countArbitrumBob).to.equal(1);
+    // expect(countArbitrumBob).to.equal(1);
     // const voteCounts1 = await this.revote.voteCounts[POLL_ID];
     // const bobVote = await this.revote.votes[POLL_ID][this.signers.bob.address];
     // console.log({ voteCounts1, bobVote });
@@ -106,31 +111,73 @@ describe("ConfidentialERC20", function () {
     }
 
     console.log("CAROL VOTES STARKNET")
-    const encryptedVoteFromCarolForStarknet = this.instances.carol.encrypt32(OPTION_STARKNET);
+
+    const encryptedVoteFromCarolForStarknet = this.instances.carol.encrypt8(OPTION_STARKNET);
     const transactionVoteCarol = await this.revote.connect(this.signers.carol).vote(POLL_ID, encryptedVoteFromCarolForStarknet);
     await transactionVoteCarol.wait();
+    
+    // Get updated result from bob's pov
 
-    let countStarknet = await this.revote.getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromCarolForStarknet);
-    console.log({ countStarknet });
-    expect(countStarknet).to.equal(1);
+    results = await this.revote.connect(this.signers.bob).getResults(POLL_ID, tokenBob.publicKey); 
+    console.log({encryptedResultAfterCarolVote: results})
+    resultsDecrypted = []
+    for (var i = 0; i < results.length; i++) {
+      resultsDecrypted.push(this.instances.bob.decrypt(this.contractAddress, results[i]))
+    }
+    console.log({resultAfterCarolVote: resultsDecrypted})
+    expect(resultsDecrypted).to.eql([1,0,1])
+    
+
+    // Check if we can get the result from Carol's pov
+
+    results = await this.revote.connect(this.signers.carol).getResults(POLL_ID, tokenCarol.publicKey); 
+    console.log({encryptedResultAfterCarolVoteCarolPov: results})
+    resultsDecrypted = []
+    for (var i = 0; i < results.length; i++) {
+      resultsDecrypted.push(this.instances.carol.decrypt(this.contractAddress, results[i]))
+    }
+    console.log({resultAfterCarolVoteCarolPov: resultsDecrypted})
+
+    expect(resultsDecrypted).to.eql([1,0,1])
+    
+
+    // let countStarknet = await this.revote.getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromCarolForStarknet);
+    // console.log({ countStarknet });
+    // expect(countStarknet).to.equal(1);
 
     console.log("DAVE VOTES STARKNET")
-    const encryptedVoteFromDaveForStarknet = this.instances.carol.encrypt32(OPTION_STARKNET);
+
+    await transactionVoteCarol.wait();
+    const encryptedVoteFromDaveForStarknet = this.instances.dave.encrypt8(OPTION_STARKNET);
     const transactionVoteDave = await this.revote.connect(this.signers.dave).vote(POLL_ID, encryptedVoteFromDaveForStarknet);
     await transactionVoteDave.wait();
 
-    countStarknet = await this.revote.getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromDaveForStarknet);
-    console.log({ countStarknet });
-    expect(countStarknet).to.equal(2);
+    console.log("Get results from alice's pov")
+
+    results = await this.revote.connect(this.signers.alice).getResults(POLL_ID, token.publicKey); 
+    console.log({encryptedResultAfterDaveVote: results})
+    resultsDecrypted = []
+    for (var i = 0; i < results.length; i++) {
+      resultsDecrypted.push(this.instances.alice.decrypt(this.contractAddress, results[i]))
+    }
+    console.log({resultAfterDaveVote: resultsDecrypted})
+    expect(resultsDecrypted).to.eql([1,0,2])
+    
+    // countStarknet = await this.revote.getVoteCountByPollAndOption(POLL_ID, encryptedVoteFromDaveForStarknet);
+    // console.log({ countStarknet });
+    // expect(countStarknet).to.equal(2);
+    //
     // BOB CHECKS WHAT HE VOTED
     // 
-    const bobChecksBob = await this.revote.connect(this.signers.bob).getVoteByPollAndVoter(POLL_ID, this.signers.bob.address)
-    console.log({bobChecksBob}) // [ 0n, 0n, true ]
+    const bobChecksBob = await this.revote.connect(this.signers.bob).getVoteByPollAndVoter(POLL_ID, tokenBob.publicKey)
+    console.log({bobChecksBob}) 
+    // BEFORE FHEVM [ 0n, 0n, true ]
+    // NOW, BEFORE DECRYPT 60730833904295246519194236421767475939546011761603382225957268367154347566028n
+    const decryptedBobChecksBob = this.instances.bob.decrypt(this.contractAddress, bobChecksBob)
+    console.log({decryptedBobChecksBob}) 
+    // const bobChecksDave = await this.revote.connect(this.signers.bob).getVoteByPollAndVoter(POLL_ID, this.signers.dave.address)
+    // console.log({bobChecksDave}) // [ 0n, 2n, true ]
 
-    const bobChecksDave = await this.revote.connect(this.signers.bob).getVoteByPollAndVoter(POLL_ID, this.signers.dave.address)
-    console.log({bobChecksDave}) // [ 0n, 2n, true ]
-
-    */
     // CAROL TRIES TO CHECK WHAT BOB VOTED
 
     // BOB CHECKS OVERALL RESULTS BEFORE VOTE FINISHES
