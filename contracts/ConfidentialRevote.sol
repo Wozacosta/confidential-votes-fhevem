@@ -9,8 +9,8 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 contract ConfidentialRevote is Reencrypt, Ownable2Step {
     // State variables
     Poll[] public polls;
-    mapping(uint => mapping(address => Vote)) public votes;
-    mapping(uint => mapping(euint32 => uint)) public voteCounts; // poll -> options -> #nbOfVotes
+    // mapping(uint => mapping(address => Vote)) public votes;
+    // mapping(uint => mapping(euint32 => uint)) public voteCounts; // poll -> options -> #nbOfVotes
     uint256 public pollCreationFee = 0.005 ether;
     uint256 public extraPollFee = 0.005 ether;
     uint256 public changeVoteFee = 0.005 ether;
@@ -18,7 +18,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     address public feeCollector;
 
     mapping(address => uint[]) public userPolls;
-    mapping(address => uint[]) public userVotes;
+    // mapping(address => uint[]) public userVotes;
 
     mapping(uint => mapping(uint8 => euint32)) internal resultForPolls;
     mapping(uint => euint8[]) internal encOptionsForPolls;
@@ -130,13 +130,28 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         }
     }
 
-    // /// @notice Retrieve vote by poll and voter
-    // /// @param _pollId The poll ID
-    // /// @param _voter The voter's address
-    // /// @return Vote object
+    /// @notice Retrieve vote by poll and voter
+    /// @param _pollId The poll ID
+    /// @param publicKey The voter's public key
+    /// @return encrypted option
     function getVoteByPollAndVoter(uint _pollId, bytes32 publicKey) public view returns (bytes memory) {
+        // TODO: could return -1 to indicate that no votes were made?
+        require(TFHE.isInitialized(votesForPolls[msg.sender][_pollId]), "Didn't vote");
         return (TFHE.reencrypt(votesForPolls[msg.sender][_pollId], publicKey));
     }
+
+    // NOTE: too much of a pain
+    // function getPollIdsVotedOn(bytes32 publicKey) external view returns (bytes[] memory) {
+    //     bytes[] memory pollsVotedOn = new bytes[](polls.length);
+    //     for (uint8 i = 0; i < polls.length; i++) {
+    //         bool hasVoted = TFHE.isInitialized(votesForPolls[msg.sender][i]);
+    //         euint32 vote = TFHE.cmux(hasVoted, TFHE.votesForPolls[msg.sender][i], 50); //TFHE.asEuint32(50));
+    //         pollsVotedOn[i] = TFHE.reencrypt(vote, publicKey);
+    //     }
+    //     // TFHE.reencrypt(TFHE.asEbool(true));
+    //     return pollsVotedOn;
+    //     // return TFHE.reencrypt(pollsVotedOn, publicKey);
+    // }
 
     /// @notice Vote in a poll
     /// @param _pollId The poll ID
@@ -155,7 +170,6 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         // votes[_pollId][msg.sender] = newVote;
         // voteCounts[_pollId][_optionId]++;
         // userVotes[msg.sender].push(_pollId);
-        // console.log("voted %s with %s", _pollId, _optionId);
     }
 
     /// @notice addToVoteResults
@@ -206,20 +220,8 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     //     return voteCounts[_pollId][_optionId];
     // }
 
-    // /// @notice Retrieve vote by poll and voter
-    // /// @param _pollId The poll ID
-    // /// @param _voter The voter's address
-    // /// @return Vote object
-    // function getVoteByPollAndVoter(uint _pollId, address _voter) public view returns (Vote memory) {
-    //     return votes[_pollId][_voter];
-    // }
-
     // TODO: use message.sender
     function getPollsByCreator(address user) external view returns (uint[] memory) {
         return userPolls[user];
     }
-
-    // function getPollIdsVotedOn() external view returns (uint[] memory) {
-    //     return userVotes[msg.sender];
-    // }
 }

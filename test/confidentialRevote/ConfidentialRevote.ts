@@ -31,6 +31,14 @@ describe("ConfidentialERC20", function () {
       { value: minimumFee },
     );
     await transaction.wait();
+    // BOB CREATES A POLL
+    const transactionBob = await this.revote.createPoll(
+      "What's the best project",
+      ["fhevm revote", "free club mate", "bitcoin 3.0"],
+      { value: minimumFee },
+    );
+    await transactionBob.wait();
+    //
     // Call the method
     const token = this.instances.alice.getPublicKey(this.contractAddress) || {
       signature: "",
@@ -38,7 +46,7 @@ describe("ConfidentialERC20", function () {
     };
     polls = await this.revote.getPollsByCreator(this.signers.alice);
     console.log({ polls });
-    expect(polls.length).to.equal(1);
+    expect(polls.length).to.equal(2);
     expect(polls[0]).to.equal(0);
 
     const allPolls = await this.revote.getPolls();
@@ -57,6 +65,7 @@ describe("ConfidentialERC20", function () {
     const tokenBob = this.instances.bob.getPublicKey(this.contractAddress)!;
     const tokenCarol = this.instances.carol.getPublicKey(this.contractAddress)!;
     const tokenDave = this.instances.dave.getPublicKey(this.contractAddress)!;
+    const tokenEven = this.instances.eve.getPublicKey(this.contractAddress)!;
     // let votesByBob = await this.revote.connect(this.signers.bob).getPollIdsVotedOn();
     // expect(votesByBob.length).to.equal(0);
 
@@ -192,7 +201,21 @@ describe("ConfidentialERC20", function () {
     const decryptedDaveVote = this.instances.dave.decrypt(this.contractAddress, daveChecksHisVote);
     console.log({ decryptedDaveVote });
     expect(decryptedDaveVote).to.equal(OPTION_STARKNET);
-    // CAROL TRIES TO CHECK WHAT BOB VOTED
+    
+    // const pollIdsVotedOn = await this.revote.connect(this.signers.dave).getPollIdsVotedOn(tokenDave.publicKey)
+    // console.log({pollIdsVotedOn})
+    // const decryptedPollIdsVotedOn = this.instances.dave.decrypt(this.contractAddress, pollIdsVotedOn)
+    // console.log({decryptedPollIdsVotedOn})
+    
+
+    console.log("EVE, THAT NEVER VOTED, TRIES TO CHECK HER VOTE ON THE POLL")
+    try {
+    await this.revote
+      .connect(this.signers.eve)
+      .getVoteByPollAndVoter(POLL_ID, tokenDave.publicKey);
+    } catch (err) {
+      expect(err.toString()).to.include("Didn't vote");
+    }
 
     // BOB CHECKS OVERALL RESULTS BEFORE VOTE FINISHES
 
