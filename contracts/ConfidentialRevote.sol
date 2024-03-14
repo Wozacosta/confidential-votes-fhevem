@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 
 pragma solidity ^0.8.20;
-import "hardhat/console.sol";
 
 import "fhevm/abstracts/Reencrypt.sol";
 import "fhevm/lib/TFHE.sol";
@@ -11,7 +10,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     // State variables
     Poll[] public polls;
     mapping(uint => mapping(address => Vote)) public votes;
-    mapping(uint => mapping(uint => uint)) public voteCounts;
+    mapping(uint => mapping(euint32 => uint)) public voteCounts; // poll -> options -> #nbOfVotes
     uint256 public pollCreationFee = 0.005 ether;
     uint256 public extraPollFee = 0.005 ether;
     uint256 public changeVoteFee = 0.005 ether;
@@ -19,7 +18,11 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     address public feeCollector;
 
     mapping(address => uint[]) public userPolls;
-    mapping(address => euint32[]) public userVotes;
+    mapping(address => uint[]) public userVotes;
+
+    mapping(uint => mapping(uint8 => euint32)) internal resultForPolls;
+    mapping(uint => euint8[]) internal encOptionsForPolls;
+    mapping(address => mapping(uint => euint8)) internal votesForPolls;
 
     /// @dev Modifiers to simplify requirements
     modifier pollExists(uint _pollId) {
@@ -53,7 +56,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     /// @dev A vote is associated with a poll and an option ID
     struct Vote {
         uint pollId;
-        uint optionId;
+        euint32 optionId;
         bool hasVoted;
     }
 
@@ -120,20 +123,54 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
 
         uint pollId = polls.length - 1;
         userPolls[msg.sender].push(pollId);
+
+        for (uint8 i = 0; i < _options.length; i++) {
+            resultForPolls[pollId][i] = TFHE.asEuint32(0);
+            encOptionsForPolls[pollId].push(TFHE.asEuint8(i));
+        }
     }
 
     /// @notice Vote in a poll
     /// @param _pollId The poll ID
-    /// @param _optionId The chosen option ID
-    function vote(uint _pollId, uint _optionId) public payable whenNotPaused pollExists(_pollId) pollIsActive(_pollId) {
-        require(!votes[_pollId][msg.sender].hasVoted, "Double voting is not allowed");
+    /// @param _encryptedOptionId The chosen option ID (encrypted)
+    function vote(
+        uint _pollId,
+        bytes calldata _encryptedOptionId
+    ) public payable whenNotPaused pollExists(_pollId) pollIsActive(_pollId) {
+        require(!TFHE.isInitialized(votesForPolls[msg.sender][_pollId]), "Double voting is not allowed");
 
-        Vote memory newVote = Vote(_pollId, _optionId, true);
-        votes[_pollId][msg.sender] = newVote;
-        voteCounts[_pollId][_optionId]++;
-        euint32[] memory _userVotes = userVotes[msg.sender];
+        euint8 option = TFHE.asEuint8(_encryptedOptionId);
+        votesForPolls[msg.sender][_pollId] = option;
+        addToVoteResults(_pollId, option, TFHE.asEuint32(1));
+
+        // Vote memory newVote = Vote(_pollId, _optionId, true);
+        // votes[_pollId][msg.sender] = newVote;
+        // voteCounts[_pollId][_optionId]++;
         // userVotes[msg.sender].push(_pollId);
         // console.log("voted %s with %s", _pollId, _optionId);
+    }
+
+    /// @notice addToVoteResults
+    /// @param _pollId The poll ID to end
+    /// @param option option
+    /// @param amount the amount
+    function addToVoteResults(uint _pollId, euint8 option, euint32 amount) internal {
+        for (uint8 i = 0; i < encOptionsForPolls[_pollId].length; i++) {
+            // euint32 isOption = TFHE.asEuint32(TFHE.eq(option, encOptionsForPolls[_pollId][i]));
+            ebool isOption = TFHE.eq(option, encOptionsForPolls[_pollId][i]);
+            // TFHE.cmux(control, a, b);
+            euint32 toAdd = TFHE.cmux(isOption, amount, TFHE.asEuint32(0));
+            resultForPolls[_pollId][i] = TFHE.add(resultForPolls[_pollId][i], toAdd);
+        }
+    }
+
+    function getResults(uint _pollId, bytes32 publicKey) public view returns (bytes[] memory) {
+        bytes[] memory resultByOption = new bytes[](encOptionsForPolls[_pollId].length);
+        for (uint8 i = 0; i < encOptionsForPolls[_pollId].length; i++) {
+            resultByOption[i] = (TFHE.reencrypt(resultForPolls[_pollId][i], publicKey));
+        }
+
+        return resultByOption;
     }
 
     /// @notice End a poll
@@ -155,23 +192,25 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         return polls[_pollId];
     }
 
-    function getVoteCountByPollAndOption(uint _pollId, uint _optionId) public view returns (uint) {
-        return voteCounts[_pollId][_optionId];
-    }
+    // function getVoteCountByPollAndOption(uint _pollId, bytes calldata _encryptedOptionId) public view returns (uint) {
+    //     euint32 _optionId = TFHE.asEuint32(_encryptedOptionId);
+    //     return voteCounts[_pollId][_optionId];
+    // }
 
-    /// @notice Retrieve vote by poll and voter
-    /// @param _pollId The poll ID
-    /// @param _voter The voter's address
-    /// @return Vote object
-    function getVoteByPollAndVoter(uint _pollId, address _voter) public view returns (Vote memory) {
-        return votes[_pollId][_voter];
-    }
+    // /// @notice Retrieve vote by poll and voter
+    // /// @param _pollId The poll ID
+    // /// @param _voter The voter's address
+    // /// @return Vote object
+    // function getVoteByPollAndVoter(uint _pollId, address _voter) public view returns (Vote memory) {
+    //     return votes[_pollId][_voter];
+    // }
 
+    // TODO: use message.sender
     function getPollsByCreator(address user) external view returns (uint[] memory) {
         return userPolls[user];
     }
 
-    function getPollIdsVotedOn(address user) external view returns (euint32[] memory) {
-        return userVotes[user];
-    }
+    // function getPollIdsVotedOn() external view returns (uint[] memory) {
+    //     return userVotes[msg.sender];
+    // }
 }
