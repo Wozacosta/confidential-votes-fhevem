@@ -9,8 +9,6 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 contract ConfidentialRevote is Reencrypt, Ownable2Step {
     // State variables
     Poll[] public polls;
-    // mapping(uint => mapping(address => Vote)) public votes;
-    // mapping(uint => mapping(euint32 => uint)) public voteCounts; // poll -> options -> #nbOfVotes
     uint256 public pollCreationFee = 0.005 ether;
     uint256 public extraPollFee = 0.005 ether;
     uint256 public changeVoteFee = 0.005 ether;
@@ -18,7 +16,6 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     address public feeCollector;
 
     mapping(address => uint[]) public userPolls;
-    // mapping(address => uint[]) public userVotes;
 
     mapping(uint => mapping(uint8 => euint32)) internal resultForPolls;
     mapping(uint => euint8[]) internal encOptionsForPolls;
@@ -140,7 +137,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         return (TFHE.reencrypt(votesForPolls[msg.sender][_pollId], publicKey));
     }
 
-    // NOTE: too much of a pain
+    // TODO
     // function getPollIdsVotedOn(bytes32 publicKey) external view returns (bytes[] memory) {
     //     bytes[] memory pollsVotedOn = new bytes[](polls.length);
     //     for (uint8 i = 0; i < polls.length; i++) {
@@ -165,11 +162,6 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
         euint8 option = TFHE.asEuint8(_encryptedOptionId);
         votesForPolls[msg.sender][_pollId] = option;
         addToVoteResults(_pollId, option, TFHE.asEuint32(1));
-
-        // Vote memory newVote = Vote(_pollId, _optionId, true);
-        // votes[_pollId][msg.sender] = newVote;
-        // voteCounts[_pollId][_optionId]++;
-        // userVotes[msg.sender].push(_pollId);
     }
 
     /// @notice addToVoteResults
@@ -178,9 +170,7 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     /// @param amount the amount
     function addToVoteResults(uint _pollId, euint8 option, euint32 amount) internal {
         for (uint8 i = 0; i < encOptionsForPolls[_pollId].length; i++) {
-            // euint32 isOption = TFHE.asEuint32(TFHE.eq(option, encOptionsForPolls[_pollId][i]));
             ebool isOption = TFHE.eq(option, encOptionsForPolls[_pollId][i]);
-            // TFHE.cmux(control, a, b);
             euint32 toAdd = TFHE.cmux(isOption, amount, TFHE.asEuint32(0));
             resultForPolls[_pollId][i] = TFHE.add(resultForPolls[_pollId][i], toAdd);
         }
@@ -213,12 +203,6 @@ contract ConfidentialRevote is Reencrypt, Ownable2Step {
     function getPollById(uint _pollId) public view returns (Poll memory) {
         return polls[_pollId];
     }
-
-    // NOTE: use getResults(poll_id) instead
-    // function getVoteCountByPollAndOption(uint _pollId, bytes calldata _encryptedOptionId) public view returns (uint) {
-    //     euint32 _optionId = TFHE.asEuint32(_encryptedOptionId);
-    //     return voteCounts[_pollId][_optionId];
-    // }
 
     // TODO: use message.sender
     function getPollsByCreator(address user) external view returns (uint[] memory) {
